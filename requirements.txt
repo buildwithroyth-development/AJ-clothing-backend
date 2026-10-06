@@ -1,6 +1,7 @@
 asgiref==3.12.1
 Django==6.1.1
 django-cors-headers==4.9.0
+django-filter==26.2
 djangorestframework==3.18.1
 psycopg==3.3.6
 psycopg-binary==3.3.6
@@ -8,3 +9,4 @@ python-dotenv==1.2.4
 sqlparse==0.6.0
 typing_extensions==4.16.0
 tzdata==2026.5
+whitenoise==6.9.0

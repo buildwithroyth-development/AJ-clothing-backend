@@ -1,0 +1,9 @@
+@echo off
+echo Staging backend changes...
+git add .
+echo Committing...
+git commit -m "feat: product feature and vercel deployment"
+echo Pushing to remote branch...
+git push origin feature/product
+echo Done!
+pause
