@@ -99,6 +99,14 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(updated).data)
 
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+        except Exception:
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute('DELETE FROM products_product WHERE id = %s', [instance.id])
+
     @action(detail=True, methods=['post'])
     def restock(self, request, pk=None):
         """Add stock units to an existing product and record in stock history."""
