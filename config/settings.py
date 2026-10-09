@@ -32,11 +32,7 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = (
-    os.environ.get('ALLOWED_HOSTS', '*').split(',')
-    if os.environ.get('ALLOWED_HOSTS')
-    else ['*', '.vercel.app', 'localhost', '127.0.0.1']
-)
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -58,7 +54,15 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
+]
+
+try:
+    import whitenoise  # noqa: F401
+    MIDDLEWARE.append('whitenoise.middleware.WhiteNoiseMiddleware')
+except ImportError:
+    pass
+
+MIDDLEWARE.extend([
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -66,7 +70,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-]
+])
 
 ROOT_URLCONF = 'config.urls'
 
@@ -95,12 +99,13 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
     import urllib.parse as urlparse
     url = urlparse.urlparse(DATABASE_URL)
+    db_name = url.path.lstrip('/').split('?')[0]
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': url.path.lstrip('/'),
-            'USER': url.username or 'postgres',
-            'PASSWORD': url.password or '',
+            'NAME': db_name,
+            'USER': urlparse.unquote(url.username or 'postgres'),
+            'PASSWORD': urlparse.unquote(url.password or ''),
             'HOST': url.hostname or 'localhost',
             'PORT': url.port or 5432,
             'OPTIONS': {
@@ -160,6 +165,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # =============================================================================
 # CORS
@@ -170,6 +176,9 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'https://aj-clothingtest.vercel.app',
+]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.vercel\.app$",
 ]
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOW_CREDENTIALS = True

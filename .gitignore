@@ -79,3 +79,9 @@ venv.bak/
 *~
 .DS_Store
 Thumbs.db
+*.bat
+
+.vercel
+node_modules/
+.agents/
+skills-lock.json

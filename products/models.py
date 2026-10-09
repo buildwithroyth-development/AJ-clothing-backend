@@ -23,7 +23,6 @@ class Product(models.Model):
         related_name='products',
     )
     name = models.CharField(max_length=200)
-    sku = models.CharField(max_length=80, unique=True, null=True, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     stock = models.PositiveIntegerField(default=0)
     colour = models.CharField(max_length=80, blank=True)
@@ -37,4 +36,22 @@ class Product(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'{self.name} ({self.sku})'
+        variant = ' · '.join(filter(None, [self.colour, self.size]))
+        return f'{self.name} ({variant})' if variant else self.name
+
+
+class StockMovement(models.Model):
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='stock_history',
+    )
+    change = models.IntegerField()
+    reason = models.CharField(max_length=255, default='Stock adjustment')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.product.name}: {self.change:+d} ({self.reason})'

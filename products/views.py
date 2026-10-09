@@ -1,9 +1,9 @@
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Category, Product
-from .serializers import CategorySerializer, ProductSerializer
+from .models import Category, Product, StockMovement
+from .serializers import CategorySerializer, ProductSerializer, StockMovementSerializer
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -27,7 +27,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['category', 'is_active', 'colour', 'size']
-    search_fields = ['name', 'sku', 'colour', 'size', 'description', 'category__name']
+    search_fields = ['name', 'colour', 'size', 'description', 'category__name']
     ordering_fields = ['name', 'price', 'stock', 'created_at']
 
     def _resolve_category(self, data):
@@ -44,7 +44,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         # Already an integer ID
         if isinstance(raw, int) or (isinstance(raw, str) and raw.isdigit()):
-            return data  # pass through — serializer handles FK lookup
+            return data
 
         # Freeform string — look up or create
         name = str(raw).strip()
@@ -57,55 +57,81 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         return {**data, 'category': None}
 
-    def _resolve_sku(self, data, is_update=False):
-        raw = data.get('sku')
-        if raw is not None and str(raw).strip():
-            data['sku'] = str(raw).strip()
-            return data
-
-        # If it's an update and sku was not sent or sent empty, set to None if sent
-        if is_update:
-            if 'sku' in data:
-                data['sku'] = None
-            return data
-
-        # Auto-generate SKU for new products when not provided
-        name = data.get('name', 'PRD')
-        colour = data.get('colour', '')
-        size = data.get('size', '')
-        import re, random, string
-        clean_name = re.sub(r'[^A-Z0-9]', '', (name or 'PRD').upper())[:4] or 'PRD'
-        clean_col = re.sub(r'[^A-Z0-9]', '', (colour or '').upper())[:3]
-        clean_size = re.sub(r'[^A-Z0-9]', '', (size or '').upper())[:2]
-        parts = [clean_name]
-        if clean_col:
-            parts.append(clean_col)
-        if clean_size:
-            parts.append(clean_size)
-
-        for _ in range(10):
-            rand = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
-            candidate = '-'.join(parts + [rand])
-            if not Product.objects.filter(sku=candidate).exists():
-                data['sku'] = candidate
-                return data
-
-        data['sku'] = None
-        return data
-
     def create(self, request, *args, **kwargs):
         data = self._resolve_category(request.data.copy())
-        data = self._resolve_sku(data, is_update=False)
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        return Response(serializer.data, status=201)
+        instance = serializer.save()
+
+        # Log initial stock if stock was provided
+        if instance.stock > 0:
+            try:
+                StockMovement.objects.create(
+                    product=instance,
+                    change=instance.stock,
+                    reason='Initial stock',
+                )
+            except Exception:
+                pass
+
+        return Response(self.get_serializer(instance).data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
+        old_stock = instance.stock
         data = self._resolve_category(request.data.copy())
-        data = self._resolve_sku(data, is_update=True)
         serializer = self.get_serializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        return Response(serializer.data)
+        updated = serializer.save()
+
+        # Log stock adjustment if stock changed
+        if 'stock' in data:
+            delta = updated.stock - old_stock
+            if delta != 0:
+                try:
+                    StockMovement.objects.create(
+                        product=updated,
+                        change=delta,
+                        reason='Stock adjusted' if delta < 0 else 'Stock added',
+                    )
+                except Exception:
+                    pass
+
+        return Response(self.get_serializer(updated).data)
+
+    @action(detail=True, methods=['post'])
+    def restock(self, request, pk=None):
+        """Add stock units to an existing product and record in stock history."""
+        instance = self.get_object()
+        try:
+            amount = int(request.data.get('amount', 0))
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid amount.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount <= 0:
+            return Response({'error': 'Amount must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        instance.stock += amount
+        instance.save(update_fields=['stock', 'updated_at'])
+
+        try:
+            StockMovement.objects.create(
+                product=instance,
+                change=amount,
+                reason=request.data.get('reason', 'Stock added (Restock)'),
+            )
+        except Exception:
+            pass
+
+        return Response(self.get_serializer(instance).data)
+
+    @action(detail=True, methods=['get'])
+    def history(self, request, pk=None):
+        """Return stock movement history for this product."""
+        instance = self.get_object()
+        try:
+            movements = instance.stock_history.all()[:50]
+            serializer = StockMovementSerializer(movements, many=True)
+            return Response(serializer.data)
+        except Exception:
+            return Response([])
