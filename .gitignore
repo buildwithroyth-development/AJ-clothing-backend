@@ -85,3 +85,8 @@ Thumbs.db
 node_modules/
 .agents/
 skills-lock.json
+
+# Sample and seed files
+*seed*
+*sample*
+products/management/
