@@ -55,4 +55,22 @@ class ProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'size': 'Size is required.'})
             if attrs.get('price') is None or attrs.get('price') < 0:
                 raise serializers.ValidationError({'price': 'Selling price is required.'})
+
+        # Variant uniqueness check: same name, colour, and size is not allowed
+        name = attrs.get('name', getattr(self.instance, 'name', None))
+        colour = attrs.get('colour', getattr(self.instance, 'colour', ''))
+        size = attrs.get('size', getattr(self.instance, 'size', ''))
+        if name and colour and size:
+            qs = Product.objects.filter(
+                name__iexact=str(name).strip(),
+                colour__iexact=str(colour).strip(),
+                size__iexact=str(size).strip(),
+                is_active=True,
+            )
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    f'Product "{name}" ({colour} · Size {size}) already exists. Do you need to update stock in the existing product?'
+                )
         return attrs
