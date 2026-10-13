@@ -6,9 +6,9 @@ from products.services import (
 from products.tests.fakedb import FakeDB
 
 
-def product(pid, name='Tee', colour='Red', size='M', price=100, stock=10):
+def product(pid, name='Tee', colour='Red', size='M', price=100, stock=10, category='Tops'):
     return {
-        'id': pid, 'name': name, 'category': 'Tops', 'category_name': 'Tops',
+        'id': pid, 'name': name, 'category': category, 'category_name': category,
         'colour': colour, 'size': size, 'price': price, 'stock': stock, 'is_active': True,
     }
 
@@ -37,10 +37,27 @@ class ProductTests(unittest.TestCase):
             with self.assertRaises(ValidationFailure, msg=missing):
                 store.create_product(data)
 
-    def test_duplicate_variant_rejected_case_insensitive(self):
-        store, _ = make_store(product(1, 'Tee', 'Red', 'M'))
+    def test_duplicate_rejected_only_when_all_five_fields_match(self):
+        store, _ = make_store(product(1, 'Rohith', 'Black', 'M', price=500, category='Pant'))
+        same = {'name': 'rohith', 'category': 'PANT', 'colour': 'BLACK', 'size': 'm', 'price': '500.00'}
         with self.assertRaises(ValidationFailure):
-            store.create_product({'name': 'tee', 'category': 'Tops', 'colour': 'RED', 'size': 'm', 'price': 1})
+            store.create_product(same)
+        # Each single difference makes it a NEW product, not a duplicate
+        for change in ({'category': 'Kurtha'}, {'price': 550}, {'colour': 'Blue'},
+                       {'size': 'L'}, {'name': 'Rohit'}):
+            created = store.create_product({**same, **change})
+            self.assertNotEqual(created['id'], 1, msg=str(change))
+        self.assertEqual(store.get_product(1)['stock'], 10)
+
+    def test_reported_example_pant_vs_kurtha(self):
+        store, _ = make_store()
+        pant = store.create_product({'name': 'Rohith', 'category': 'pant', 'size': 'M',
+                                     'colour': 'Black', 'price': 500, 'stock': 5})
+        kurtha = store.create_product({'name': 'Rohith', 'category': 'Kurtha', 'size': 'M',
+                                       'colour': 'Black', 'price': 500, 'stock': 3})
+        self.assertNotEqual(pant['id'], kurtha['id'])
+        self.assertEqual(store.get_product(pant['id'])['stock'], 5)
+        self.assertEqual(kurtha['stock'], 3)
 
     def test_new_ids_continue_after_existing_ones(self):
         store, _ = make_store(product(1700000000000))
@@ -66,8 +83,9 @@ class ProductTests(unittest.TestCase):
     def test_update_cannot_create_duplicate(self):
         store, _ = make_store(product(1, 'Tee', 'Red', 'M'), product(2, 'Tee', 'Red', 'L'))
         with self.assertRaises(ValidationFailure):
-            store.update_product(2, {'size': 'M'})
-        store.update_product(2, {'price': 120})  # editing itself is fine
+            store.update_product(2, {'size': 'M'})  # now identical to product 1 (same price too)
+        store.update_product(2, {'size': 'M', 'price': 120})  # different price -> allowed
+        store.update_product(2, {'category': 'Kurtha'})  # different category -> allowed
         self.assertEqual(store.get_product(2)['price'], 120)
 
     def test_restock(self):
