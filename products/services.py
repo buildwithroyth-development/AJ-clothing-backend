@@ -184,14 +184,28 @@ class Store:
             raise NotFound('Product not found.')
         return product
 
-    def _check_duplicate(self, name, colour, size, exclude_id=None):
+    def _check_duplicate(self, name, category, colour, size, price, exclude_id=None):
+        """A product already exists only if name, category, colour, size AND price all match."""
+        price = _money(price, 'price')
         for p in self.list_products():
             if exclude_id is not None and str(p.get('id')) == str(exclude_id):
                 continue
-            if _same(p.get('name'), name) and _same(p.get('colour'), colour) and _same(p.get('size'), size):
+            if not (
+                _same(p.get('name'), name)
+                and _same(p.get('category_name') or p.get('category'), category)
+                and _same(p.get('colour'), colour)
+                and _same(p.get('size'), size)
+            ):
+                continue
+            try:
+                same_price = _money(p.get('price', 0), 'price') == price
+            except ValidationFailure:
+                same_price = False
+            if same_price:
                 raise ValidationFailure(
-                    f'Product "{name}" ({colour} · Size {size}) already exists '
-                    f'(current stock: {p.get("stock", 0)} units). Update the existing product instead.'
+                    f'Product "{name}" ({category} · {colour} · Size {size} · ₹{_store_number(price)}) '
+                    f'already exists (current stock: {p.get("stock", 0)} units). '
+                    f'Add to the existing stock, or change a detail to create a new product.'
                 )
 
     def _movement(self, product_id, product_name, change, reason, extra=None):
@@ -223,7 +237,7 @@ class Store:
         stock = _whole(data.get('stock', 0) if data.get('stock') not in (None, '') else 0, 'stock')
         description = _text(data.get('description'), 'description', 2000)
 
-        self._check_duplicate(name, colour, size)
+        self._check_duplicate(name, category, colour, size, price)
 
         pid = self._next_number(
             'products',
@@ -281,8 +295,10 @@ class Store:
 
         self._check_duplicate(
             changes.get('name', current.get('name')),
+            changes.get('category_name', current.get('category_name') or current.get('category')),
             changes.get('colour', current.get('colour')),
             changes.get('size', current.get('size')),
+            changes.get('price', current.get('price', 0)),
             exclude_id=pid,
         )
 
