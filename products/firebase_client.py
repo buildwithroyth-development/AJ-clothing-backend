@@ -30,6 +30,10 @@ def _ensure_app():
 
 
 def is_configured():
+    try:
+        import firebase_admin
+    except ImportError:
+        return False
     return bool(
         (os.environ.get('FIREBASE_DATABASE_URL') or os.environ.get('DATABASE_URL'))
         and (os.environ.get('FIREBASE_SERVICE_ACCOUNT_JSON') or os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'))
@@ -70,12 +74,12 @@ def _dev_initial_data():
 
 def get_store():
     global _store
-    if _store is None:
-        if not is_configured():
-            from .tests.fakedb import FakeDB
-            _store = Store(FakeDB(_dev_initial_data()))
-        else:
-            from firebase_admin import db
-            _ensure_app()
+    if is_configured():
+        from firebase_admin import db
+        _ensure_app()
+        if _store is None or getattr(_store, 'db', None) != db:
             _store = Store(db)
+    elif _store is None:
+        from .tests.fakedb import FakeDB
+        _store = Store(FakeDB(_dev_initial_data()))
     return _store
