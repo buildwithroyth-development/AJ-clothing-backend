@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Product, StockMovement
+from .models import Category, Product, StockMovement, Sale, SaleItem
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -74,3 +74,27 @@ class ProductSerializer(serializers.ModelSerializer):
                     f'Product "{name}" ({colour} · Size {size}) already exists. Do you need to update stock in the existing product?'
                 )
         return attrs
+
+
+class SaleItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SaleItem
+        fields = [
+            'id', 'product', 'product_name', 'colour', 'size',
+            'price', 'quantity', 'line_total',
+        ]
+        read_only_fields = ['id']
+
+
+class SaleSerializer(serializers.ModelSerializer):
+    items = SaleItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Sale
+        fields = [
+            'id', 'bill_number', 'customer_name', 'customer_mobile',
+            'subtotal', 'discount_percent', 'discount', 'after_discount', 'round_off',
+            'rounding_adjustment', 'total', 'payment_method',
+            'items', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']
