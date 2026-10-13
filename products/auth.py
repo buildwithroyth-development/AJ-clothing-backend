@@ -1,0 +1,48 @@
+from rest_framework.authentication import BaseAuthentication, get_authorization_header
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.permissions import BasePermission
+
+from . import firebase_client
+
+
+class FirebaseUser:
+    is_authenticated = True
+    is_anonymous = False
+
+    def __init__(self, uid, email=''):
+        self.uid = uid
+        self.email = email
+
+    def __str__(self):
+        return self.email or self.uid
+
+
+class FirebaseAuthentication(BaseAuthentication):
+    """Authorization: Bearer <Firebase ID token> (the token the frontend gets after sign-in)."""
+
+    def authenticate(self, request):
+        parts = get_authorization_header(request).split()
+        if not parts or parts[0].lower() != b'bearer':
+            return None
+        if len(parts) != 2:
+            raise AuthenticationFailed('Invalid Authorization header.')
+        try:
+            decoded = firebase_client.verify_id_token(parts[1].decode())
+        except Exception:
+            raise AuthenticationFailed('Your sign-in has expired or is invalid. Please sign in again.')
+        return FirebaseUser(decoded['uid'], decoded.get('email', '')), decoded
+
+    def authenticate_header(self, request):
+        return 'Bearer'
+
+
+class IsStaff(BasePermission):
+    """Signed in AND listed under staff/<uid> = true in the database."""
+
+    message = 'This account is not authorised to use AJ Clothing.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not getattr(user, 'is_authenticated', False) or not hasattr(user, 'uid'):
+            return False
+        return firebase_client.get_store().is_staff(user.uid)

@@ -1,12 +1,16 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import CategoryViewSet, ProductViewSet, SaleViewSet
+from django.urls import re_path
 
-router = DefaultRouter()
-router.register(r'categories', CategoryViewSet, basename='category')
-router.register(r'products', ProductViewSet, basename='product')
-router.register(r'sales', SaleViewSet, basename='sale')
+from . import views
 
+# The trailing slash is optional so '/products' and '/products/' both work
+# (a redirect would break cross-origin requests that carry an Authorization header).
 urlpatterns = [
-    path('', include(router.urls)),
+    re_path(r'^categories/?$', views.CategoryList.as_view()),
+    re_path(r'^products/?$', views.ProductList.as_view()),
+    re_path(r'^products/(?P<pid>[^/]+)/restock/?$', views.ProductRestock.as_view()),
+    re_path(r'^products/(?P<pid>[^/]+)/history/?$', views.ProductHistory.as_view()),
+    re_path(r'^products/(?P<pid>[^/]+)/?$', views.ProductDetail.as_view()),
+    re_path(r'^sales/?$', views.SaleList.as_view()),
+    re_path(r'^sales/(?P<sale_id>[^/]+)/?$', views.SaleDetail.as_view()),
+    re_path(r'^(?:stock_movements|movements)/?$', views.StockMovementList.as_view()),
 ]
