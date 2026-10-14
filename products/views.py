@@ -1,7 +1,7 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .auth import FirebaseAuthentication, IsStaff
+from .auth import FirebaseAuthentication, IsSignedIn, IsStaff, is_approved
 from .firebase_client import get_store
 from .services import StoreError
 
@@ -78,4 +78,27 @@ class SaleDetail(StoreView):
 
 class StockMovementList(StoreView):
     def get(self, request):
-        return Response(self.store.recent_movements())
+        """?since=<ISO time> keeps only movements from then on (the app sends the start of today);
+        ?limit=<n> caps the number returned (default 10, max 200)."""
+        try:
+            limit = max(1, min(200, int(request.query_params.get('limit', 10))))
+        except ValueError:
+            limit = 10
+        since = request.query_params.get('since') or None
+        return Response(self.store.recent_movements(limit=limit, since=since))
+
+
+class Me(StoreView):
+    """Who am I, and may I use the shop data? Works for any signed-in user so the app can
+    show the right screen (approved / verify e-mail / waiting for approval)."""
+
+    permission_classes = [IsSignedIn]
+
+    def get(self, request):
+        claims = request.auth if isinstance(request.auth, dict) else {}
+        return Response({
+            'uid': request.user.uid,
+            'email': request.user.email,
+            'email_verified': bool(claims.get('email_verified')),
+            'approved': bool(is_approved(request.user.uid, claims)),
+        })

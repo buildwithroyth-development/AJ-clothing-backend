@@ -30,6 +30,13 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 # by Django itself. Use SECRET_KEY from the environment if set, else a random one.
 SECRET_KEY = os.environ.get('SECRET_KEY') or get_random_secret_key()
 
+# Who may use the shop data after registering (see products/auth.py):
+#  - anyone listed under staff/<uid> = true in Realtime Database, always;
+#  - e-mails in STAFF_EMAILS (comma separated) once their e-mail is verified;
+#  - everyone with a verified e-mail if AUTO_APPROVE_VERIFIED_USERS=True (open registration).
+STAFF_EMAILS = os.environ.get('STAFF_EMAILS', '')
+AUTO_APPROVE_VERIFIED_USERS = os.environ.get('AUTO_APPROVE_VERIFIED_USERS', 'False') == 'True'
+
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '*').split(',') if h.strip()]
 
 

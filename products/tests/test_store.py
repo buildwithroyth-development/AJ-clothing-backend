@@ -13,6 +13,9 @@ def product(pid, name='Tee', colour='Red', size='M', price=100, stock=10, catego
     }
 
 
+CUST = {'customer_name': 'Asha', 'customer_mobile': '9876543210'}
+
+
 def make_store(*products, **extra):
     root = {'products': {str(p['id']): p for p in products}}
     root.update(extra)
@@ -108,21 +111,21 @@ class ProductTests(unittest.TestCase):
 class SaleTests(unittest.TestCase):
     def test_sale_deducts_stock_logs_movements_and_numbers_bills(self):
         store, _ = make_store(product(1, price=100, stock=10), product(2, 'Jeans', price=250, stock=5))
-        s1 = store.create_sale({'items': [{'id': 1, 'qty': 2}, {'id': 2, 'qty': 1}]}, created_by='a@x.in')
+        s1 = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 2}, {'id': 2, 'qty': 1}]}, created_by='a@x.in')
         self.assertEqual(s1['bill_number'], 'AJ-000001')
         self.assertEqual((s1['subtotal'], s1['total']), (450, 450))
         self.assertEqual(s1['created_by'], 'a@x.in')
         self.assertEqual(store.get_product(1)['stock'], 8)
         self.assertEqual(store.get_product(2)['stock'], 4)
         self.assertEqual(store.product_history(1)[0]['reason'], 'Sold (AJ-000001)')
-        s2 = store.create_sale({'items': [{'id': 1, 'qty': 1}]})
+        s2 = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}]})
         self.assertEqual(s2['bill_number'], 'AJ-000002')
         self.assertEqual(len(store.list_sales()), 2)
         self.assertEqual(store.get_sale(s1['id'])['bill_number'], 'AJ-000001')
 
     def test_client_prices_and_totals_are_ignored(self):
         store, _ = make_store(product(1, price=100, stock=10))
-        sale = store.create_sale({'items': [{'id': 1, 'qty': 3, 'price': 1, 'name': 'Hacked'}],
+        sale = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 3, 'price': 1, 'name': 'Hacked'}],
                                   'subtotal': 1, 'total': 1, 'discount': 99})
         self.assertEqual(sale['items'][0]['price'], 100)
         self.assertEqual(sale['items'][0]['name'], 'Tee')
@@ -130,25 +133,58 @@ class SaleTests(unittest.TestCase):
 
     def test_discount_percent_and_rounding(self):
         store, _ = make_store(product(1, price=333.33, stock=10))
-        sale = store.create_sale({'items': [{'id': 1, 'qty': 1}], 'discount_percent': 10})
+        sale = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'discount_percent': 10})
         self.assertEqual((sale['discount'], sale['after_discount'], sale['total']), (33.33, 300, 300))
-        sale = store.create_sale({'items': [{'id': 1, 'qty': 1}], 'discount_percent': 10,
+        sale = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'discount_percent': 10,
                                   'round_off': True, 'total': 295})
         self.assertEqual((sale['total'], sale['rounding_adjustment']), (295, -5))
 
     def test_manual_total_ignored_unless_round_off(self):
         store, _ = make_store(product(1, price=100, stock=10))
-        sale = store.create_sale({'items': [{'id': 1, 'qty': 1}], 'total': 5})
+        sale = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'total': 5})
         self.assertEqual(sale['total'], 100)
 
-    def test_discount_clamped_to_0_100(self):
+    def test_discount_must_be_between_0_and_100(self):
         store, _ = make_store(product(1, price=100, stock=10))
-        self.assertEqual(store.create_sale({'items': [{'id': 1, 'qty': 1}], 'discount_percent': 250})['total'], 0)
-        self.assertEqual(store.create_sale({'items': [{'id': 1, 'qty': 1}], 'discount_percent': -5})['total'], 100)
+        for bad in (250, 100.01, -5, 'abc'):
+            with self.assertRaises(ValidationFailure, msg=str(bad)) as ctx:
+                store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'discount_percent': bad})
+            self.assertEqual(ctx.exception.field, 'discount_percent')
+        self.assertEqual(store.get_product(1)['stock'], 10)  # nothing was deducted
+        self.assertEqual(store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'discount_percent': 100})['total'], 0)
+        self.assertEqual(store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'discount_percent': 0})['total'], 100)
+
+    def test_customer_name_and_mobile_required(self):
+        store, _ = make_store(product(1, stock=10))
+        item = [{'id': 1, 'qty': 1}]
+        cases = [
+            ({}, 'customer_name'),
+            ({'customer_name': '   ', 'customer_mobile': '9876543210'}, 'customer_name'),
+            ({'customer_name': 'Asha'}, 'customer_mobile'),
+            ({'customer_name': 'Asha', 'customer_mobile': ' '}, 'customer_mobile'),
+            ({'customer_name': 'Asha', 'customer_mobile': 'abc'}, 'customer_mobile'),
+            ({'customer_name': 'Asha', 'customer_mobile': '12'}, 'customer_mobile'),
+        ]
+        for extra, field in cases:
+            with self.assertRaises(ValidationFailure, msg=str(extra)) as ctx:
+                store.create_sale({'items': item, **extra})
+            self.assertEqual(ctx.exception.field, field, msg=str(extra))
+        self.assertEqual(store.get_product(1)['stock'], 10)
+
+    def test_customer_email_is_optional_but_validated(self):
+        store, _ = make_store(product(1, stock=10))
+        sale = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}]})
+        self.assertEqual(sale['customer_email'], '')
+        sale = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'customer_email': ' asha@example.com '})
+        self.assertEqual(sale['customer_email'], 'asha@example.com')
+        with self.assertRaises(ValidationFailure) as ctx:
+            store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}], 'customer_email': 'not-an-email'})
+        self.assertEqual(ctx.exception.field, 'customer_email')
+        self.assertEqual(store.get_product(1)['stock'], 8)
 
     def test_duplicate_lines_are_merged(self):
         store, _ = make_store(product(1, stock=5))
-        sale = store.create_sale({'items': [{'id': 1, 'qty': 2}, {'id': 1, 'qty': 2}]})
+        sale = store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 2}, {'id': 1, 'qty': 2}]})
         self.assertEqual(len(sale['items']), 1)
         self.assertEqual(sale['items'][0]['qty'], 4)
         self.assertEqual(store.get_product(1)['stock'], 1)
@@ -156,7 +192,7 @@ class SaleTests(unittest.TestCase):
     def test_out_of_stock_changes_nothing_even_for_earlier_lines(self):
         store, db = make_store(product(1, stock=10), product(2, 'Jeans', stock=1))
         with self.assertRaises(OutOfStock) as ctx:
-            store.create_sale({'items': [{'id': 1, 'qty': 4}, {'id': 2, 'qty': 3}]})
+            store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 4}, {'id': 2, 'qty': 3}]})
         self.assertIn('Only 1 units available for Jeans', ctx.exception.message)
         self.assertEqual(store.get_product(1)['stock'], 10)
         self.assertEqual(store.get_product(2)['stock'], 1)
@@ -166,14 +202,14 @@ class SaleTests(unittest.TestCase):
     def test_unknown_product_rejected_and_stock_restored(self):
         store, _ = make_store(product(1, stock=10))
         with self.assertRaises(NotFound):
-            store.create_sale({'items': [{'id': 1, 'qty': 2}, {'id': 404, 'qty': 1}]})
+            store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 2}, {'id': 404, 'qty': 1}]})
         self.assertEqual(store.get_product(1)['stock'], 10)
 
     def test_write_failure_restores_stock(self):
         store, db = make_store(product(1, stock=10))
         db.fail_next_update = True
         with self.assertRaises(RuntimeError):
-            store.create_sale({'items': [{'id': 1, 'qty': 4}]})
+            store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 4}]})
         self.assertEqual(store.get_product(1)['stock'], 10)
         self.assertEqual(store.list_sales(), [])
 
@@ -190,11 +226,23 @@ class SaleTests(unittest.TestCase):
         existing = {'a': {'bill_number': 'AJ-000001', 'created_at': '2026-01-01'},
                     'b': {'bill_number': 'AJ-000002', 'created_at': '2026-01-02'}}
         store, _ = make_store(product(1, stock=10), sales=existing)
-        self.assertEqual(store.create_sale({'items': [{'id': 1, 'qty': 1}]})['bill_number'], 'AJ-000003')
+        self.assertEqual(store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}]})['bill_number'], 'AJ-000003')
+
+    def test_recent_movements_since_keeps_only_today(self):
+        old = {'1': {'a': {'id': 'a', 'product': 1, 'change': 5, 'reason': 'Initial stock',
+                           'created_at': '2026-10-12T20:00:00.000Z'}}}
+        store, db = make_store(product(1, stock=10), stock_movements=old)
+        store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}]})
+        self.assertEqual(len(store.recent_movements()), 2)
+        start_of_today = '2026-10-13T00:00:00.000Z'
+        rows = store.recent_movements(limit=50, since=start_of_today)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]['reason'].startswith('Sold'))
+        self.assertEqual(store.recent_movements(since='2999-01-01T00:00:00.000Z'), [])
 
     def test_recent_movements_newest_first(self):
         store, _ = make_store(product(1, stock=10))
-        store.create_sale({'items': [{'id': 1, 'qty': 1}]})
+        store.create_sale({**CUST, 'items': [{'id': 1, 'qty': 1}]})
         store.restock(1, 3)
         rows = store.recent_movements()
         self.assertEqual(len(rows), 2)

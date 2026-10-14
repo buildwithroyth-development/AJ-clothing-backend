@@ -27,6 +27,16 @@ The app signs staff in with Firebase Authentication and sends the resulting ID t
 ### Deploying on Vercel
 Set `FIREBASE_DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `ALLOWED_HOSTS` (your API domain) and optionally `CORS_ALLOWED_ORIGINS` as project environment variables. Leave `DEBUG` unset.
 
+## Who can sign in
+
+People register in the app (Create account) and must verify their email. After that:
+
+1. Anyone listed under `staff/<uid>` = `true` in Realtime Database (the owner's approval) can always use the app.
+2. Verified users whose email is in `STAFF_EMAILS` (comma separated) are approved automatically.
+3. Set `AUTO_APPROVE_VERIFIED_USERS=True` to let **any** verified user in (open registration). The default is `False`: new users see "Waiting for approval" until the owner adds them.
+
+If Firebase is not configured the API **refuses requests** (HTTP 503). The built-in demo user and in-memory data exist only for local development, when `DEBUG=True` and no Firebase credentials are set.
+
 ## Endpoints (all under `/api/v1/`, all require a staff token)
 
 | Method | Path | What it does |
@@ -38,9 +48,10 @@ Set `FIREBASE_DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `ALLOWED_HOSTS` (y
 | GET | `products/<id>/history/` | Stock movements for a product |
 | GET / POST | `sales/` | List bills / create a bill |
 | GET | `sales/<id>/` | One bill |
-| GET | `stock_movements/` | Latest 10 movements across all products |
+| GET | `stock_movements/` | Latest movements across all products. `?since=<ISO time>` keeps only newer ones (the dashboard sends the start of today), `?limit=<n>` (default 10, max 200) |
+| GET | `me/` | Any signed-in user: `{email, email_verified, approved}` (used by the app to show the right screen) |
 
-A bill is created with `{"items": [{"id": 12, "qty": 2}], "discount_percent": 10, "round_off": true, "total": 1200, "payment_method": "Cash", "customer_name": "", "customer_mobile": ""}`. Prices and totals are **recomputed on the server** from the live product records; any prices sent by the client are ignored. `total` is only used when `round_off` is true.
+A bill is created with `{"items": [{"id": 12, "qty": 2}], "discount_percent": 10, "round_off": true, "total": 1200, "payment_method": "Cash", "customer_name": "Asha", "customer_mobile": "9876543210", "customer_email": ""}`. `customer_name` and `customer_mobile` are required, `customer_email` is optional, and `discount_percent` must be between 0 and 100 (otherwise the bill is rejected). Prices and totals are **recomputed on the server** from the live product records; any prices sent by the client are ignored. `total` is only used when `round_off` is true.
 
 ### How billing stays consistent
 Stock is deducted per product in a transaction (never below zero), the bill number comes from an atomic counter, and the sale plus its stock movements are written in one multi-path update. If any step fails, the stock already deducted is put back. Sales and stock history are never edited or deleted by the API.

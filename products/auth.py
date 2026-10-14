@@ -1,9 +1,18 @@
 from django.conf import settings
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import APIException, AuthenticationFailed
 from rest_framework.permissions import BasePermission
 
 from . import firebase_client
+
+DEV_UID = 'dev-staff-1'
+DEV_EMAIL = 'dev@ajclothing.com'
+
+
+class ServerNotConfigured(APIException):
+    status_code = 503
+    default_detail = 'The server is not connected to Firebase yet. Please contact the administrator.'
+    default_code = 'not_configured'
 
 
 class FirebaseUser:
@@ -18,25 +27,52 @@ class FirebaseUser:
         return self.email or self.uid
 
 
+def dev_mode():
+    """Local development only: DEBUG on AND Firebase credentials not set.
+    In production (DEBUG off) a missing configuration is an error, never an open door."""
+    return bool(getattr(settings, 'DEBUG', False)) and not firebase_client.is_configured()
+
+
+def _email_list(name):
+    return {e.strip().lower() for e in str(getattr(settings, name, '') or '').split(',') if e.strip()}
+
+
+def is_approved(uid, claims):
+    """Who may use the shop data.
+
+    1. Anyone listed under staff/<uid> = true in the database (approved by the owner).
+    2. A user whose e-mail is verified AND who is either in STAFF_EMAILS or
+       AUTO_APPROVE_VERIFIED_USERS is on.
+    """
+    if dev_mode():
+        return True
+    if firebase_client.get_store().is_staff(uid):
+        return True
+    email = str((claims or {}).get('email') or '').lower()
+    if not (claims or {}).get('email_verified'):
+        return False
+    if getattr(settings, 'AUTO_APPROVE_VERIFIED_USERS', False):
+        return True
+    return bool(email) and email in _email_list('STAFF_EMAILS')
+
+
 class FirebaseAuthentication(BaseAuthentication):
     """Authorization: Bearer <Firebase ID token> (the token the frontend gets after sign-in)."""
 
     def authenticate(self, request):
-        if not firebase_client.is_configured():
-            return FirebaseUser('dev-staff-1', 'dev@ajclothing.com'), {'uid': 'dev-staff-1', 'email': 'dev@ajclothing.com'}
+        if dev_mode():
+            return FirebaseUser(DEV_UID, DEV_EMAIL), {'uid': DEV_UID, 'email': DEV_EMAIL, 'email_verified': True}
 
         parts = get_authorization_header(request).split()
         if not parts or parts[0].lower() != b'bearer':
             return None
         if len(parts) != 2:
             raise AuthenticationFailed('Invalid Authorization header.')
-
-        token = parts[1].decode()
-        if getattr(settings, 'DEBUG', False) and token == 'dev-token':
-            return FirebaseUser('dev-staff-1', 'dev@ajclothing.com'), {'uid': 'dev-staff-1', 'email': 'dev@ajclothing.com'}
+        if not firebase_client.is_configured():
+            raise ServerNotConfigured()
 
         try:
-            decoded = firebase_client.verify_id_token(token)
+            decoded = firebase_client.verify_id_token(parts[1].decode())
         except Exception:
             raise AuthenticationFailed('Your sign-in has expired or is invalid. Please sign in again.')
         return FirebaseUser(decoded['uid'], decoded.get('email', '')), decoded
@@ -45,18 +81,18 @@ class FirebaseAuthentication(BaseAuthentication):
         return 'Bearer'
 
 
-class IsStaff(BasePermission):
-    """Signed in AND listed under staff/<uid> = true in the database."""
+class IsSignedIn(BasePermission):
+    def has_permission(self, request, view):
+        return hasattr(request.user, 'uid')
 
-    message = 'This account is not authorised to use AJ Clothing.'
+
+class IsStaff(BasePermission):
+    """Signed in AND approved (see is_approved)."""
+
+    message = 'Your account is waiting for approval by the store owner.'
 
     def has_permission(self, request, view):
-        if not firebase_client.is_configured():
-            return True
         user = request.user
-        if not getattr(user, 'is_authenticated', False) or not hasattr(user, 'uid'):
+        if not hasattr(user, 'uid'):
             return False
-        if getattr(settings, 'DEBUG', False) and user.uid == 'dev-staff-1':
-            return True
-        return firebase_client.get_store().is_staff(user.uid)
-
+        return is_approved(user.uid, request.auth if isinstance(request.auth, dict) else {})

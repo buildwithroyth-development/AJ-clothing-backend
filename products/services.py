@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 MOBILE_RE = re.compile(r'^[+\d ()-]{7,20}$')
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
 CENT = Decimal('0.01')
 
 
@@ -373,7 +374,11 @@ class Store:
         moves.sort(key=lambda m: m.get('created_at', ''), reverse=True)
         return moves[:limit]
 
-    def recent_movements(self, limit=10):
+    def recent_movements(self, limit=10, since=None):
+        """Newest stock movements across all products.
+
+        `since` is an ISO timestamp (e.g. the start of the local day); older movements are left out.
+        """
         tree = self._ref('stock_movements').get() or {}
         products = {str(p.get('id')): p for p in self.list_products()}
         out = []
@@ -381,6 +386,8 @@ class Store:
         for pid, moves in entries:
             for m in _to_list(moves):
                 if 'change' not in m:
+                    continue
+                if since and m.get('created_at', '') < since:
                     continue
                 row = dict(m)
                 row['productName'] = m.get('product_name') or products.get(str(pid), {}).get('name') or 'Product'
@@ -427,13 +434,27 @@ class Store:
             wanted[str(pid)] = wanted.get(str(pid), 0) + qty
 
         customer_name = _text(data.get('customer_name'), 'customer_name', 120)
+        if not customer_name:
+            raise ValidationFailure('Customer name is required.', 'customer_name')
         customer_mobile = _text(data.get('customer_mobile'), 'customer_mobile', 20)
-        if customer_mobile and not MOBILE_RE.match(customer_mobile):
-            raise ValidationFailure('Please enter a valid phone number (7–20 digits).', 'customer_mobile')
+        if not customer_mobile:
+            raise ValidationFailure('Mobile number is required.', 'customer_mobile')
+        if not MOBILE_RE.match(customer_mobile) or len(re.sub(r'\D', '', customer_mobile)) < 7:
+            raise ValidationFailure('Please enter a valid mobile number (7–20 digits).', 'customer_mobile')
+        customer_email = _text(data.get('customer_email'), 'customer_email', 254)  # optional
+        if customer_email and not EMAIL_RE.match(customer_email):
+            raise ValidationFailure('Please enter a valid email address.', 'customer_email')
         payment = _text(data.get('payment_method') or data.get('payment') or 'Cash', 'payment_method', 50)
 
-        pct = Decimal(str(data.get('discount_percent') or 0)) if _is_number(data.get('discount_percent')) else Decimal(0)
-        pct = min(Decimal(100), max(Decimal(0), pct))
+        raw_pct = data.get('discount_percent')
+        if raw_pct in (None, ''):
+            pct = Decimal(0)
+        elif _is_number(raw_pct):
+            pct = Decimal(str(raw_pct))
+        else:
+            raise ValidationFailure('Discount must be a number between 0% and 100%.', 'discount_percent')
+        if pct < 0 or pct > 100:
+            raise ValidationFailure('Discount must be between 0% and 100%.', 'discount_percent')
         round_off = bool(data.get('round_off'))
 
         deducted = []  # (pid, qty, product after deduction)
@@ -486,6 +507,7 @@ class Store:
                 'bill': bill_number,
                 'customer_name': customer_name,
                 'customer_mobile': customer_mobile,
+                'customer_email': customer_email,
                 'items': items,
                 'subtotal': _store_number(subtotal),
                 'discount_percent': _store_number(pct),
