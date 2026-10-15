@@ -20,6 +20,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 MOBILE_RE = re.compile(r'^[+\d ()-]{7,20}$')
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$')
+SIZE_RE = re.compile(r'^[a-zA-Z0-9 ]+$')
 CENT = Decimal('0.01')
 
 
@@ -230,6 +231,8 @@ class Store:
             raise ValidationFailure('Category is required.', 'category')
         colour = _text(data.get('colour'), 'colour', 80, required=True)
         size = _text(data.get('size'), 'size', 30, required=True)
+        if not SIZE_RE.match(size):
+            raise ValidationFailure('Size can only contain numbers and letters.', 'size')
         if data.get('price') in (None, ''):
             raise ValidationFailure('Selling price is required.', 'price')
         price = _money(data.get('price'), 'price')
@@ -281,7 +284,10 @@ class Store:
         if 'colour' in data:
             changes['colour'] = _text(data['colour'], 'colour', 80, required=True)
         if 'size' in data:
-            changes['size'] = _text(data['size'], 'size', 30, required=True)
+            size = _text(data['size'], 'size', 30, required=True)
+            if not SIZE_RE.match(size):
+                raise ValidationFailure('Size can only contain numbers and letters.', 'size')
+            changes['size'] = size
         if 'price' in data:
             price = _money(data['price'], 'price')
             if price < 0:

@@ -75,6 +75,16 @@ class ProductTests(unittest.TestCase):
         with self.assertRaises(ValidationFailure):
             store.create_product({**base, 'price': 1, 'stock': -3})
 
+    def test_size_alphanumeric_validation(self):
+        store, _ = make_store()
+        base = {'name': 'Polo', 'category': 'Tops', 'colour': 'Navy', 'price': 100}
+        for valid_size in ('M', '32', 'XL', 'Free Size', '28 30'):
+            p = store.create_product({**base, 'size': valid_size})
+            self.assertEqual(p['size'], valid_size)
+        for invalid_size in ('M/L', '32-34', 'S#', 'Size@1'):
+            with self.assertRaises(ValidationFailure):
+                store.create_product({**base, 'size': invalid_size})
+
     def test_update_stock_logs_movement(self):
         store, _ = make_store(product(1, stock=10))
         store.update_product(1, {'stock': 7})
