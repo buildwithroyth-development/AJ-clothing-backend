@@ -7,6 +7,14 @@ from .services import Store
 _store = None
 
 
+class TokenError(Exception):
+    """The sign-in token itself is bad: expired, malformed or revoked."""
+
+
+class ProjectMismatch(Exception):
+    """The token was issued for a different Firebase project than the server's credentials."""
+
+
 def _ensure_app():
     import firebase_admin
     from firebase_admin import credentials
@@ -46,8 +54,34 @@ def verify_id_token(token):
 
     from firebase_admin import auth
 
+    # Problems starting Firebase (bad key, wrong URL...) are raised as they are: they are
+    # configuration errors, not a problem with the person's sign-in.
     _ensure_app()
-    return auth.verify_id_token(token)
+    try:
+        return auth.verify_id_token(token)
+    except auth.ExpiredIdTokenError as exc:
+        raise TokenError('expired') from exc
+    except (auth.InvalidIdTokenError, auth.RevokedIdTokenError, ValueError) as exc:
+        message = str(exc)
+        if 'incorrect "aud"' in message or 'incorrect "iss"' in message:
+            raise ProjectMismatch(message) from exc
+        raise TokenError('invalid') from exc
+
+
+def app_info():
+    """What the health check reports: is the Admin SDK usable, and for which project?
+    Only the project id (public) and the kind of error are returned, never details."""
+    if not is_configured():
+        return {'firebase_configured': False}
+    info = {'firebase_configured': True}
+    try:
+        app = _ensure_app()
+        info['firebase_ready'] = True
+        info['firebase_project'] = getattr(app, 'project_id', None)
+    except Exception as exc:  # noqa: BLE001 - reported by type only
+        info['firebase_ready'] = False
+        info['firebase_error'] = type(exc).__name__
+    return info
 
 
 def _dev_initial_data():

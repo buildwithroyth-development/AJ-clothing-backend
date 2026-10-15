@@ -8,7 +8,7 @@ def health_check(request):
     return JsonResponse({
         'status': 'ok',
         'message': 'AJ Clothing API is running',
-        'firebase_configured': firebase_client.is_configured(),
+        **firebase_client.app_info(),
     })
 
 

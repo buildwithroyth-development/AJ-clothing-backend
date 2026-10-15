@@ -40,6 +40,17 @@ Everyone else sees "Waiting for approval".
 
 If Firebase is not configured the API **refuses requests** (HTTP 503). The built-in demo user and in-memory data exist only for local development, when `DEBUG=True` and no Firebase credentials are set.
 
+### Sign-in says "expired or invalid", or the server cannot check it
+Open `GET /` (for example http://localhost:8000/). It reports whether the Firebase Admin SDK really starts:
+
+```json
+{"firebase_configured": true, "firebase_ready": true, "firebase_project": "aj-clothing-e8477"}
+```
+
+- `firebase_project` must be the same project the app signs in with (`aj-clothing-e8477`). A service-account key from another project makes every sign-in fail; the API then answers "connected to a different Firebase project".
+- `firebase_ready: false` with a `firebase_error` means the key or database URL could not be loaded (for example `FIREBASE_SERVICE_ACCOUNT_JSON` is not the complete one-line JSON).
+- The exact reason is also printed in the server console / Vercel logs.
+
 ## Endpoints (all under `/api/v1/`, all require a staff token)
 
 | Method | Path | What it does |

@@ -1,9 +1,13 @@
+import logging
+
 from django.conf import settings
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import APIException, AuthenticationFailed
 from rest_framework.permissions import BasePermission
 
 from . import firebase_client
+
+logger = logging.getLogger(__name__)
 
 DEV_UID = 'dev-staff-1'
 DEV_EMAIL = 'dev@ajclothing.com'
@@ -73,8 +77,21 @@ class FirebaseAuthentication(BaseAuthentication):
 
         try:
             decoded = firebase_client.verify_id_token(parts[1].decode())
-        except Exception:
+        except firebase_client.TokenError as exc:
+            logger.warning('Sign-in rejected: token is %s.', exc)
             raise AuthenticationFailed('Your sign-in has expired or is invalid. Please sign in again.')
+        except firebase_client.ProjectMismatch as exc:
+            logger.error('Sign-in rejected: the app and the server use different Firebase projects (%s).', exc)
+            raise ServerNotConfigured(
+                'The server is connected to a different Firebase project than the app. '
+                'Use a service-account key from the same project as the app.'
+            )
+        except Exception:  # noqa: BLE001 - configuration or network problem, not the person's fault
+            logger.exception('Firebase Admin could not check a sign-in token.')
+            raise ServerNotConfigured(
+                'The server could not check your sign-in with Firebase. '
+                'Check FIREBASE_SERVICE_ACCOUNT_JSON and FIREBASE_DATABASE_URL on the server.'
+            )
         return FirebaseUser(decoded['uid'], decoded.get('email', '')), decoded
 
     def authenticate_header(self, request):
