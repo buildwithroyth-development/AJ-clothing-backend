@@ -31,11 +31,12 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 SECRET_KEY = os.environ.get('SECRET_KEY') or get_random_secret_key()
 
 # Who may use the shop data after registering (see products/auth.py):
-#  - anyone listed under staff/<uid> = true in Realtime Database, always;
-#  - e-mails in STAFF_EMAILS (comma separated) once their e-mail is verified;
-#  - everyone with a verified e-mail if AUTO_APPROVE_VERIFIED_USERS=True (open registration).
+#  - by default, anyone who has created an account and verified their e-mail;
+#  - set AUTO_APPROVE_VERIFIED_USERS=False to require approval instead, in which case only
+#    users listed under staff/<uid> = true in the database, or whose e-mail is in STAFF_EMAILS
+#    (comma separated), can get in.
 STAFF_EMAILS = os.environ.get('STAFF_EMAILS', '')
-AUTO_APPROVE_VERIFIED_USERS = os.environ.get('AUTO_APPROVE_VERIFIED_USERS', 'False') == 'True'
+AUTO_APPROVE_VERIFIED_USERS = os.environ.get('AUTO_APPROVE_VERIFIED_USERS', 'True').strip().lower() in ('1', 'true', 'yes')
 
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get('ALLOWED_HOSTS', '*').split(',') if h.strip()]
 

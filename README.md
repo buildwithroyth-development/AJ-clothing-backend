@@ -29,11 +29,14 @@ Set `FIREBASE_DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `ALLOWED_HOSTS` (y
 
 ## Who can sign in
 
-People register in the app (Create account) and must verify their email. After that:
+People register in the app (Create account) and must verify their email. **Once the email is verified they can use the app straight away**, with no approval step.
 
-1. Anyone listed under `staff/<uid>` = `true` in Realtime Database (the owner's approval) can always use the app.
-2. Verified users whose email is in `STAFF_EMAILS` (comma separated) are approved automatically.
-3. Set `AUTO_APPROVE_VERIFIED_USERS=True` to let **any** verified user in (open registration). The default is `False`: new users see "Waiting for approval" until the owner adds them.
+To require approval instead, set `AUTO_APPROVE_VERIFIED_USERS=False`. Then only these users get in:
+
+1. Anyone listed under `staff/<uid>` = `true` in Realtime Database.
+2. Verified users whose email is in `STAFF_EMAILS` (comma separated).
+
+Everyone else sees "Waiting for approval".
 
 If Firebase is not configured the API **refuses requests** (HTTP 503). The built-in demo user and in-memory data exist only for local development, when `DEBUG=True` and no Firebase credentials are set.
 
