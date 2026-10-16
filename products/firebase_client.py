@@ -58,7 +58,7 @@ def verify_id_token(token):
     # configuration errors, not a problem with the person's sign-in.
     _ensure_app()
     try:
-        return auth.verify_id_token(token)
+        return auth.verify_id_token(token, clock_skew_seconds=60)
     except auth.ExpiredIdTokenError as exc:
         raise TokenError('expired') from exc
     except (auth.InvalidIdTokenError, auth.RevokedIdTokenError, ValueError) as exc:

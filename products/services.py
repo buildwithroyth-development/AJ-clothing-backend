@@ -413,6 +413,14 @@ class Store:
             raise NotFound('Sale not found.')
         return sale
 
+    def update_sale(self, sale_id, updates):
+        sale_ref = self._ref(f'sales/{sale_id}')
+        current = sale_ref.get()
+        if not current:
+            raise NotFound('Sale not found.')
+        sale_ref.update(updates)
+        return {**current, **updates}
+
     def create_sale(self, data, created_by=''):
         """Create a bill.
 
@@ -540,6 +548,28 @@ class Store:
         except Exception:
             put_stock_back()
             raise
+
+    # ---- store settings ----------------------------------------------------
+    def get_store_settings(self):
+        """Retrieve custom store profile details from Firebase, if present."""
+        data = self._ref('settings/store').get()
+        return data if isinstance(data, dict) else {}
+
+    def update_store_settings(self, data):
+        """Update store profile details in Firebase."""
+        cleaned = {
+            'name': _text(data.get('name') or data.get('storeName'), 'name', 120),
+            'tagline': _text(data.get('tagline'), 'tagline', 120),
+            'address': _text(data.get('address'), 'address', 300),
+            'phone': _text(data.get('phone'), 'phone', 30),
+            'email': _text(data.get('email'), 'email', 120),
+            'gstin': _text(data.get('gstin'), 'gstin', 30),
+            'note': _text(data.get('note'), 'note', 300),
+        }
+        # Keep non-empty fields
+        filtered = {k: v for k, v in cleaned.items() if v}
+        self._ref('settings/store').update(filtered)
+        return self.get_store_settings()
 
 
 def _is_number(value):

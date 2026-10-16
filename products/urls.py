@@ -12,6 +12,8 @@ urlpatterns = [
     re_path(r'^products/(?P<pid>[^/]+)/history/?$', views.ProductHistory.as_view()),
     re_path(r'^products/(?P<pid>[^/]+)/?$', views.ProductDetail.as_view()),
     re_path(r'^sales/?$', views.SaleList.as_view()),
+    re_path(r'^sales/(?P<sale_id>[^/]+)/send_email/?$', views.SaleSendEmail.as_view()),
     re_path(r'^sales/(?P<sale_id>[^/]+)/?$', views.SaleDetail.as_view()),
+    re_path(r'^settings/?$', views.StoreSettings.as_view()),
     re_path(r'^(?:stock_movements|movements)/?$', views.StockMovementList.as_view()),
 ]

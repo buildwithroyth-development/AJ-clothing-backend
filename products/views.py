@@ -68,12 +68,56 @@ class SaleList(StoreView):
 
     def post(self, request):
         created_by = getattr(request.user, 'email', '') or getattr(request.user, 'uid', '')
-        return Response(self.store.create_sale(self.body(request), created_by=created_by), status=201)
+        sale = self.store.create_sale(self.body(request), created_by=created_by)
+        return Response(sale, status=201)
 
 
 class SaleDetail(StoreView):
     def get(self, request, sale_id):
         return Response(self.store.get_sale(sale_id))
+
+
+class SaleSendEmail(StoreView):
+    def post(self, request, sale_id):
+        sale = self.store.get_sale(sale_id)
+        data = self.body(request)
+        target_email = data.get('email') or sale.get('customer_email')
+        if not target_email or not str(target_email).strip():
+            return Response({'error': 'Please provide a recipient email address.'}, status=400)
+
+        target_email = str(target_email).strip()
+        db_store = None
+        try:
+            db_store = self.store.get_store_settings()
+        except Exception:
+            pass
+
+        from .email_service import send_sale_email
+        res = send_sale_email(sale, store=db_store, recipient=target_email)
+        updates = {
+            'customer_email': target_email,
+            'email_status': res['status'],
+            'email_sent_at': res.get('sent_at'),
+            'email_error': res.get('error'),
+        }
+        updated_sale = self.store.update_sale(sale_id, updates)
+        return Response({
+            'sale': updated_sale,
+            'result': res,
+        }, status=200 if res['status'] == 'sent' else 400 if res['status'] == 'failed' else 200)
+
+
+class StoreSettings(StoreView):
+    def get(self, request):
+        from .email_service import resolve_store_info
+        db_settings = self.store.get_store_settings()
+        return Response(resolve_store_info(db_settings))
+
+    def post(self, request):
+        from .email_service import resolve_store_info
+        data = self.body(request)
+        saved = self.store.update_store_settings(data)
+        return Response(resolve_store_info(saved))
 
 
 class StockMovementList(StoreView):
