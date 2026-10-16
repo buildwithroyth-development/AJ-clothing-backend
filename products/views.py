@@ -101,10 +101,13 @@ class SaleSendEmail(StoreView):
             'email_error': res.get('error'),
         }
         updated_sale = self.store.update_sale(sale_id, updates)
-        return Response({
+        response_data = {
             'sale': updated_sale,
             'result': res,
-        }, status=200 if res['status'] == 'sent' else 400 if res['status'] == 'failed' else 200)
+        }
+        if res.get('error'):
+            response_data['error'] = res['error']
+        return Response(response_data, status=200 if res['status'] == 'sent' else 400 if res['status'] == 'failed' else 200)
 
 
 class StoreSettings(StoreView):
