@@ -50,8 +50,8 @@ class EmailServiceTests(unittest.TestCase):
         self.assertIn('Dear Rohit Sharma,', text)
         self.assertIn('Thank you for shopping with us!', text)
         self.assertIn('Bill-AJ-000001.pdf', text)
-        self.assertIn('Return Policy:', text)
-        self.assertIn('The AJ Clothing Team', text)
+        self.assertNotIn('Return Policy:', text)
+        self.assertIn('The AJ Clothing Store Team', text)
         # Ensure items and calculation lines are not cluttering the email body
         self.assertNotIn('Everyday Tee', text)
         self.assertNotIn('Total Amount:', text)
@@ -63,8 +63,8 @@ class EmailServiceTests(unittest.TestCase):
         self.assertIn('Thank you for shopping with us!', html)
         self.assertIn('Please find your bill attached as a PDF', html)
         self.assertIn('cid:store_logo', html)
-        self.assertIn('Return Policy:', html)
-        self.assertIn('The AJ Clothing Team', html)
+        self.assertNotIn('Return Policy:', html)
+        self.assertIn('The AJ Clothing Store Team', html)
         # Ensure items and calculation tables are not cluttering the email body
         self.assertNotIn('Everyday Tee', html)
         self.assertNotIn('Subtotal', html)

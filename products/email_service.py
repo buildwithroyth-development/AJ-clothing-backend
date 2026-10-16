@@ -1,4 +1,5 @@
 import os
+import re
 import smtplib
 import ssl
 from datetime import datetime, timezone
@@ -28,7 +29,7 @@ def get_default_store():
             or 'contact@ajclothing.com'
         ).strip(),
         'gstin': os.getenv('STORE_GSTIN', '').strip(),
-        'note': os.getenv('STORE_NOTE', 'Returns within 7 days with tag intact.').strip(),
+        'note': os.getenv('STORE_NOTE', 'Thank you for shopping with us!').strip(),
     }
 
 
@@ -244,7 +245,9 @@ def invoice_pdf(sale, store=None):
     blocks.extend([totals_table, Spacer(1, 6 * mm)])
 
     # Footer note
-    note = store.get('note') or 'Thank you for shopping with AJ Clothing!'
+    raw_note = store.get('note') or 'Thank you for shopping with AJ Clothing!'
+    clean_note = re.sub(r'(?i)returns?\s+within\s+\d+\s+days[^\n.]*\.?', '', raw_note).strip()
+    note = clean_note or 'Thank you for shopping with AJ Clothing!'
     blocks.append(p(note, meta_style))
 
     doc = SimpleDocTemplate(
@@ -267,7 +270,6 @@ def bill_text(sale, store=None):
     customer = sale.get('customer_name') or sale.get('customerName') or 'Valued Customer'
     bill_num = sale.get('bill_number') or sale.get('bill') or 'AJ-000000'
     store_name = store.get('name') or 'AJ Clothing'
-    note = store.get('note') or 'Returns within 7 days with tag intact.'
 
     lines = [
         f"Dear {customer},",
@@ -275,8 +277,6 @@ def bill_text(sale, store=None):
         "Thank you for shopping with us! We truly appreciate your visit and hope you love your new purchase.",
         "",
         f"Please find your bill receipt (Bill-{bill_num}.pdf) attached as a PDF to this email.",
-        "",
-        f"Return Policy: {note}",
         "",
         "We look forward to serving you again soon!",
         "",
@@ -288,7 +288,7 @@ def bill_text(sale, store=None):
 
 
 def bill_html(sale, store=None, logo_cid=None):
-    """Generate a clean, minimal HTML email body focusing on greeting, friendly note, PDF attachment notice, store policy, and sign-off."""
+    """Generate a clean, minimal HTML email body focusing on greeting, friendly note, PDF attachment notice, and sign-off."""
     store = resolve_store_info(store)
     customer = escape(str(sale.get('customer_name') or sale.get('customerName') or 'Valued Customer'))
     bill_num = escape(str(sale.get('bill_number') or sale.get('bill') or 'AJ-000000'))
@@ -296,7 +296,6 @@ def bill_html(sale, store=None, logo_cid=None):
     store_address = escape(str(store.get('address') or ''))
     store_phone = escape(str(store.get('phone') or ''))
     store_email = escape(str(store.get('email') or ''))
-    store_note = escape(str(store.get('note') or 'Returns within 7 days with tag intact.'))
 
     logo_img_tag = (
         f'<img src="cid:{logo_cid}" alt="{store_name}" width="52" height="52" style="width: 52px; height: 52px; max-width: 52px; max-height: 52px; display: block; margin-bottom: 12px; border: 0; outline: none; text-decoration: none; border-radius: 50%;" />'
@@ -353,11 +352,6 @@ def bill_html(sale, store=None, logo_cid=None):
                   </td>
                 </tr>
               </table>
-
-              <!-- Store Policy -->
-              <div style="background-color: #faf8f5; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #78716c; line-height: 1.5; margin-bottom: 24px;">
-                <strong>Return Policy:</strong> {store_note}
-              </div>
 
               <!-- Warm Sign-off -->
               <p style="margin: 0; font-size: 14px; color: #44403c; line-height: 1.6;">
